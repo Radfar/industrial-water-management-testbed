@@ -38,7 +38,7 @@ The objective is not to reproduce one vendor's automation solution, but to inves
 # 2. System Architecture
 
 The testbed is being developed as a layered architecture:
-**[layered architecture]([https://github.com/Radfar/industrial-water-management-testbed/media/ProjectStructure.jpg](https://github.com/Radfar/industrial-water-management-testbed/blob/main/media/ProjectStructure.jpg))**
+[https://github.com/Radfar/industrial-water-management-testbed/media/ProjectStructure.jpg](https://github.com/Radfar/industrial-water-management-testbed/blob/main/media/ProjectStructure.jpg)
 
 
 The architecture is intentionally modular. Individual technologies can be replaced or extended without changing the underlying water-management process model.
