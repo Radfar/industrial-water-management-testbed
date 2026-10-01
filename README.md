@@ -38,51 +38,8 @@ The objective is not to reproduce one vendor's automation solution, but to inves
 # 2. System Architecture
 
 The testbed is being developed as a layered architecture:
+**[layered architecture](https://github.com/Radfar/industrial-water-management-testbed/media/ProjectStructure.jpg)**
 
-```text
-                         INDUSTRIAL WATER PROCESS
-                                  │
-                 ┌────────────────┼────────────────┐
-                 │                │                │
-                 ▼                ▼                ▼
-          Siemens S7-1500   Rockwell Micro850   CODESYS
-             Zone 01           Zone 02          Zone 03
-                 │                │                │
-                 └────────────────┼────────────────┘
-                                  │
-                              OPC UA
-                                  │
-                                  ▼
-                         ┌─────────────────┐
-                         │   SCADA LAYER   │
-                         │                 │
-                         │ Ignition        │
-                         │ Web SCADA       │
-                         └────────┬────────┘
-                                  │
-                    ┌─────────────┴─────────────┐
-                    │                           │
-                    ▼                           ▼
-             Industrial IT                BAS Integration
-                    │                           │
-                    ▼                           ▼
-             Node.js / APIs              BACnet/IP
-             PostgreSQL                       │
-                    │                         ▼
-                    │                    BACnet Clients
-                    │                    / BAS Platforms
-                    │
-                    ▼
-             Future IIoT Layer
-                    │
-          ┌─────────┼─────────┐
-          ▼         ▼         ▼
-       MQTT     Node-RED   VFD / Edge
-          │
-          ▼
-       Cloud / Data
-       Analytics
-```
 
 The architecture is intentionally modular. Individual technologies can be replaced or extended without changing the underlying water-management process model.
 
