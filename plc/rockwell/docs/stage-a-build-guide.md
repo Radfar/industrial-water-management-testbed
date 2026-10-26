@@ -2,7 +2,7 @@
 
 ## 1. Controller decision
 
-**Micro850**, catalog family 2080-LC50 (48-point combo, e.g. `2080-LC50-48QWB`, matches the free CCW Simulator's I/O count). Not Micro870.
+**Micro850**, catalog family 2080-LC50 (48-point combo, e.g. `2080-LC50-48QWB-SIM`, matches the free CCW Simulator's I/O count). Not Micro870.
 
 | | Micro850 | Micro870 |
 |---|---|---|
@@ -21,7 +21,7 @@ Decision logged in `docs/decisions-log.md`.
 5. Build (F7) and fix any syntax flags — CCW's ST editor is IEC 61131-3, close to what you've already written in CODESYS.
 
 ## 3. Global variable declarations
-
+as a csv file
 ```iecst
 (* ==== Operator / Mode — written from Ignition Perspective ==== *)
 StartCmd        : BOOL;
