@@ -21,58 +21,50 @@ Decision logged in `docs/decisions-log.md`.
 5. Build (F7) and fix any syntax flags — CCW's ST editor is IEC 61131-3, close to what you've already written in CODESYS.
 
 ## 3. Global variable declarations
-as a csv file
+These variables are accessed through the Z02_ prefix or other global identifiers. The data types below are inferred from how the code uses them and the earlier declarations you supplied; verify them against your CCW Global Variables table. as a csv file
 ```iecst
-(* ==== Operator / Mode — written from Ignition Perspective ==== *)
-StartCmd        : BOOL;
-StopCmd         : BOOL;
-ResetCmd        : BOOL;
-AutoMode        : BOOL := TRUE;
 
-(* ==== State ==== *)
-SystemState     : DINT := 0;   (* 0=IDLE 10=FILL 20=IRR_Z1 21=IRR_Z2 22=IRR_Z3 30=DRAIN 90=FAULT *)
-
-(* ==== Field outputs ==== *)
-PumpRun             : BOOL;
-PumpSpeedRefPct     : REAL;     (* 0.0-100.0 *)
-Valve1_Open         : BOOL;
-Valve2_Open         : BOOL;
-Valve3_Open         : BOOL;
-DrainValve_Open     : BOOL;
-
-(* ==== Field inputs — simulator: driven by the virtual process model in §4;
-        real hardware (Stage C): replace with wired analog inputs ==== *)
-LevelSensorPct      : REAL;
-FlowSensor_Lpm      : REAL;
-PressureSensor_Bar  : REAL;
-
-(* ==== Setpoints ==== *)
-LevelSetpoint_FillPct : REAL := 90.0;
-LevelSetpoint_MinPct  : REAL := 10.0;
-IrrigatePumpSpeedPct  : REAL := 60.0;
-FillPumpSpeedPct      : REAL := 80.0;
-
-(* ==== Timers ==== *)
-FillTimer    : TON;
-Zone1Timer   : TON;
-Zone2Timer   : TON;
-Zone3Timer   : TON;
-DrainTimer   : TON;
-
-(* ==== Faults ==== *)
-Fault_LowLevelToRun : BOOL;
-Fault_FillTimeout    : BOOL;
-Fault_Active         : BOOL;
-FaultCode            : DINT;
-
-(* ==== PowerFlex interface — mirrors the CCAT "PowerFlex Component-class
-        AC Drive" sample project's tag pattern. Swap this block for the
-        real drive's tags once hardware exists; nothing else changes. ==== *)
-PowerFlex_Start      : BOOL;
-PowerFlex_Stop       : BOOL;
-PowerFlex_SpeedRef   : REAL;
-PowerFlex_Running    : BOOL;   (* feedback — stays FALSE until real drive connected *)
-PowerFlex_Faulted    : BOOL;   (* feedback — stays FALSE until real drive connected *)
+No.	Variable	Suggested / known type	Purpose
+1	Z02_START	BOOL	Start command
+2	Z02_STOP	BOOL	Stop command
+3	Z02_FAULT_RESET	BOOL	Fault reset command
+4	Z02_AUTO	BOOL	Automatic mode selection
+5	Z02_SIM_ACTIVE	BOOL	Simulation initialization status
+6	Z02_SIM_ENABLE	BOOL	Enables simulation
+7	Z02_SIM_FLOW_TARGET	REAL	Target flow
+8	Z02_SIM_FLOW_RATE	REAL	Flow ramp rate
+9	Z02_SIM_MOISTURE_RATE	REAL	Moisture increase rate
+10	Z02_SIM_DRY_RATE	REAL	Moisture decrease rate
+11	Z02_SIM_LOW_FLOW_LIMIT	REAL	Low-flow threshold
+12	Z02_MOISTURE_LOW_SP	REAL	Low moisture setpoint
+13	Z02_MOISTURE_HIGH_SP	REAL	High moisture setpoint
+14	Z02_IRR_SPD_SP	REAL	Irrigation pump speed setpoint
+15	Z02_MOISTURE	REAL	Simulated soil moisture
+16	Z02_SIM_COMM_FAULT	BOOL	Simulated communication fault
+17	Z02_SIM_ACTUATOR_FAULT	BOOL	Simulated actuator fault
+18	Z02_SIM_SENSOR_FAULT	BOOL	Simulated sensor fault
+19	Z02_SIM_RESTRICTION	BOOL	Simulated flow restriction
+20	Z02_FAULT	BOOL	Latched fault status
+21	Z02_COMM_OK	BOOL	Communication status
+22	Z02_PERMISSIVE	BOOL	Operating permissive
+23	Z02_AUTO_ACTIVE	BOOL	AUTO mode active status
+24	Z02_RUNNING	BOOL	Running status
+25	Z02_COMMANDED	BOOL	Effective irrigation command
+26	Z02_VALVE	REAL	Simulated valve position
+27	Z02_FLOW	REAL	Simulated measured flow
+28	Z02_PUMP_RUN	BOOL	Pump run command
+29	Z02_PUMP_SPD	REAL	Pump speed command
+30	Z02_PF_START	BOOL	PowerFlex start mapping
+31	Z02_PF_STOP	BOOL	PowerFlex stop mapping
+32	Z02_PF_SPDREF	REAL	PowerFlex speed reference
+33	Z02_FLOW_OK	BOOL	Flow quality status
+34	Z02_LOW_FLOW	BOOL	Low-flow alarm status
+35	Z02_PROCESS_OK	BOOL	Overall process status
+36	Z02_TOTAL_RUNTIME_SEC	DINT / UDINT	Accumulated runtime in seconds
+37	Z02_RUN_FEEDBACK	BOOL	Run feedback
+38	Z02_MANUAL	BOOL	Manual mode status
+39	Z02_PF_RUNNING	BOOL	PowerFlex running feedback
+40	Z02_PF_FAULTED	BOOL	PowerFlex fault status
 ```
 
 ## 4. Structured Text program
