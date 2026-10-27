@@ -1,4 +1,4 @@
-# Stage A — Rockwell Leg: Micro850 Simulator, Irrigation Control, Ignition OPC UA
+# Stage A - Rockwell Leg: Micro850 Simulator, Web SCADA Zone 02
 
 ## 1. Controller decision
 
