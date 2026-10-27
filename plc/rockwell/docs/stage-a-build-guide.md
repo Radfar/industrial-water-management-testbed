@@ -14,7 +14,7 @@ Decision logged in `docs/decisions-log.md`.
 
 ## 2. Project setup in CCW 23.0.0
 
-1. **File → New Project.** Controller: Micro850, catalog `2080-LC50-48QWB` (or the 24-point variant if that's what the simulator wizard offers — match whatever the SIM target proposes).
+1. **File → New Project.** Controller: Micro850, catalog `2080-LC50-48QWB _SIM` (or the 24-point variant if that's what the simulator wizard offers — match whatever the SIM target proposes).
 2. Confirm the project shows the controller name ending in `SIM` — that's your simulator target, no hardware needed.
 3. **Global Variables** window → paste the declarations from §3 below. Use Global (not Program) scope so they're visible for OPC UA/Ignition exposure later.
 4. **Programs → Prg → Structured Text** (or add a new ST POU if `Prg` defaults to Ladder) → paste the code from §4.
