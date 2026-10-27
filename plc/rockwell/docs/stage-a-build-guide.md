@@ -25,10 +25,10 @@ These variables are accessed through the Z02_ prefix or other global identifiers
 ```iecst
 
 No.	Variable	Suggested / known type	Purpose
-1	Z02_START	BOOL	Start command
-2	Z02_STOP	BOOL	Stop command
+1	Z02_START	   BOOL	   Start command
+2	Z02_STOP	      BOOL	   Stop command
 3	Z02_FAULT_RESET	BOOL	Fault reset command
-4	Z02_AUTO	BOOL	Automatic mode selection
+4	Z02_AUTO	BOOL	Operator manual or auto selection (TRUE = auto)
 5	Z02_SIM_ACTIVE	BOOL	Simulation initialization status
 6	Z02_SIM_ENABLE	BOOL	Enables simulation
 7	Z02_SIM_FLOW_TARGET	REAL	Target flow
