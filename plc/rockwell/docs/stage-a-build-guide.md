@@ -79,62 +79,52 @@ PowerFlex_Faulted    : BOOL;   (* feedback — stays FALSE until real drive conn
 
 ```iecst
 (* =============================================================
-   MICRO850 ZONE 02 - WATER MANAGEMENT SIMULATION
-   Controller: Micro850 / CCW
-   Language: Structured Text (ST)
-
-   Includes:
-   - Start/stop edge detection
-   - Fault generation and reset
-   - Permissive and automatic/manual control
-   - Pump and valve command simulation
-   - Flow and tank-level simulation
-   - Low-flow detection
-   - Runtime accumulation
-   - Moisture test signal for Node-RED CIP Read
+   ZONE 02 - MICRO850 IRRIGATION CONTROL
+   Optimized CCW Implementation
    ============================================================= *)
 
-
-(* =============================================================
-   1. COMMAND EDGE DETECTION
-   ============================================================= *)
-
+(* 1. COMMAND EDGE DETECTION *)
 rtStart(CLK := Z02_START);
 rtStop(CLK := Z02_STOP);
 rtFaultReset(CLK := Z02_FAULT_RESET);
 
-
 (* =============================================================
-   2. STATUS MIRRORS
+   1.2 AUTOMATIC SIMULATION ENGINE INITIALIZATION 
    ============================================================= *)
+IF NOT Z02_SIM_ACTIVE THEN
+    Z02_SIM_ENABLE         := TRUE;
+    Z02_SIM_FLOW_TARGET    := 100.0;
+    Z02_SIM_FLOW_RATE      := 5.0;     (* Already configured correctly *)
+    Z02_SIM_MOISTURE_RATE  := 0.05;    (* FIX: Overwriting the 0.0 state *)
+    Z02_SIM_DRY_RATE       := 0.01;
+    Z02_SIM_LOW_FLOW_LIMIT := 60.0;
+    Z02_MOISTURE_LOW_SP    := 30.0;
+    Z02_MOISTURE_HIGH_SP   := 70.0;
+    Z02_IRR_SPD_SP         := 75.0;
+    
+    IF Z02_MOISTURE = 0.0 THEN
+        Z02_MOISTURE       := 35.0;
+    END_IF;
+END_IF;
 
+(* 2. SIMULATION AND COMMUNICATION STATUS *)
 Z02_SIM_ACTIVE := Z02_SIM_ENABLE;
-
-(* Simulation placeholder only.
-   Replace with real communications diagnostics when integrated. *)
-Z02_COMM_OK := TRUE;
+Z02_COMM_OK    := NOT Z02_SIM_COMM_FAULT;
 
 
-(* =============================================================
-   3. FAULT GENERATION / RESET
-   ============================================================= *)
-
+(* 3. FAULT LATCH AND RESET *)
 IF Z02_SIM_ACTUATOR_FAULT OR Z02_SIM_SENSOR_FAULT THEN
     Z02_FAULT := TRUE;
 END_IF;
 
 IF rtFaultReset.Q THEN
-    IF NOT Z02_SIM_ACTUATOR_FAULT
-       AND NOT Z02_SIM_SENSOR_FAULT THEN
+    IF NOT Z02_SIM_ACTUATOR_FAULT AND NOT Z02_SIM_SENSOR_FAULT THEN
         Z02_FAULT := FALSE;
     END_IF;
 END_IF;
 
 
-(* =============================================================
-   4. PERMISSIVE
-   ============================================================= *)
-
+(* 4. PERMISSIVE *)
 Z02_PERMISSIVE :=
     NOT Z02_FAULT
     AND NOT Z02_SIM_ACTUATOR_FAULT
@@ -143,66 +133,45 @@ Z02_PERMISSIVE :=
     AND Z02_SIM_ENABLE;
 
 
-(* =============================================================
-   5. AUTO DEMAND - LEVEL HYSTERESIS
-   ============================================================= *)
-
-IF Z02_LEVEL <= Z02_LEVEL_LOW_SP THEN
+(* 5. AUTOMATIC MOISTURE DEMAND - HYSTERESIS *)
+IF Z02_MOISTURE <= Z02_MOISTURE_LOW_SP THEN
     xAutoDemand := TRUE;
-ELSIF Z02_LEVEL >= Z02_LEVEL_HIGH_SP THEN
+ELSIF Z02_MOISTURE >= Z02_MOISTURE_HIGH_SP THEN
     xAutoDemand := FALSE;
 END_IF;
 
 
-(* =============================================================
-   6. RUNNING DECISION
-   ============================================================= *)
-
-Z02_AUTO_ACTIVE := FALSE;
-
-IF Z02_AUTO AND Z02_PERMISSIVE THEN
-
-    Z02_AUTO_ACTIVE := TRUE;
-    Z02_RUNNING := xAutoDemand;
-
-ELSIF Z02_PERMISSIVE THEN
-
-    IF rtStart.Q THEN
-        Z02_RUNNING := TRUE;
+(* 6. RUNNING DECISION *)
+IF Z02_PERMISSIVE THEN
+    IF Z02_AUTO THEN
+        Z02_AUTO_ACTIVE := TRUE;
+        Z02_RUNNING     := xAutoDemand;
+    ELSE
+        Z02_AUTO_ACTIVE := FALSE;
+        IF rtStart.Q THEN
+            Z02_RUNNING := TRUE;
+        END_IF;
     END_IF;
-
+ELSE
+    Z02_AUTO_ACTIVE := FALSE;
 END_IF;
 
+(* Manual/safety Stop always wins *)
 IF rtStop.Q THEN
     Z02_RUNNING := FALSE;
     xAutoDemand := FALSE;
 END_IF;
 
 
-(* =============================================================
-   7. FAULT / COMMUNICATION / ENABLE SAFETY
-   ============================================================= *)
-
-IF Z02_FAULT THEN
-    Z02_RUNNING := FALSE;
-END_IF;
-
-IF NOT Z02_COMM_OK THEN
-    Z02_RUNNING := FALSE;
-END_IF;
-
-IF NOT Z02_SIM_ENABLE THEN
+(* 7. SAFETY OVERRIDES *)
+IF Z02_FAULT OR (NOT Z02_COMM_OK) OR (NOT Z02_SIM_ENABLE) THEN
     Z02_RUNNING := FALSE;
 END_IF;
 
 
-(* =============================================================
-   8. PUMP AND DRIVE COMMANDS
-   ============================================================= *)
-
+(* 8. PUMP, VALVE COMMANDS AND DRIVE REFERENCES *)
 Z02_COMMANDED := Z02_RUNNING AND Z02_PERMISSIVE;
-
-Z02_PUMP_RUN := Z02_COMMANDED;
+Z02_PUMP_RUN  := Z02_COMMANDED;
 
 IF Z02_COMMANDED THEN
     Z02_PUMP_SPD := Z02_IRR_SPD_SP;
@@ -210,60 +179,49 @@ ELSE
     Z02_PUMP_SPD := 0.0;
 END_IF;
 
-Z02_PF_START := Z02_PUMP_RUN;
-Z02_PF_STOP := NOT Z02_PUMP_RUN;
+Z02_PF_START  := Z02_PUMP_RUN;
+Z02_PF_STOP   := NOT Z02_PUMP_RUN;
 Z02_PF_SPDREF := Z02_PUMP_SPD;
 
-
 (* =============================================================
-   9. 100 ms SIMULATION TICK
+   9. PERIODIC PROCESS SIMULATION (100MS TICK)
    ============================================================= *)
 
-
+(* CRITICAL CCW FIX: The timer block must be executed UNCONDITIONALLY every single scan *)
 SimTick(IN := NOT SimTick.Q, PT := T#100MS);
+
+(* Only process the simulation updates on the exact scan the timer trips *)
 IF SimTick.Q THEN
 
-    (* ---------------------------------------------------------
-       9.1 VALVE POSITION
-       Assumes Z02_VALVE is REAL, expressed as a percentage.
-       --------------------------------------------------------- *)
-
+    (* 9.1 Valve position *)
     IF Z02_COMMANDED THEN
         Z02_VALVE := 100.0;
     ELSE
         Z02_VALVE := 0.0;
     END_IF;
 
-
-    (* ---------------------------------------------------------
-       9.2 FLOW TARGET
-       --------------------------------------------------------- *)
-
+    (* 9.2 Flow target, including restriction *)
     IF Z02_COMMANDED THEN
         rFlowTarget := Z02_SIM_FLOW_TARGET;
+        IF Z02_SIM_RESTRICTION THEN
+            rFlowTarget := rFlowTarget * 0.25;
+        END_IF;
     ELSE
         rFlowTarget := 0.0;
     END_IF;
 
-
-    (* ---------------------------------------------------------
-       9.3 FLOW RESPONSE
-       --------------------------------------------------------- *)
-
+    (* 9.3 Flow ramp response *)
     rFlowError := rFlowTarget - Z02_FLOW;
-
-    rFlowStep := ABS(Z02_SIM_FLOW_RATE) * 0.1;
-
+    rFlowStep  := ABS(Z02_SIM_FLOW_RATE) * 0.1;
+    
     IF rFlowStep < 0.1 THEN
         rFlowStep := 0.1;
     END_IF;
 
     IF rFlowError > rFlowStep THEN
         Z02_FLOW := Z02_FLOW + rFlowStep;
-
     ELSIF rFlowError < -rFlowStep THEN
         Z02_FLOW := Z02_FLOW - rFlowStep;
-
     ELSE
         Z02_FLOW := rFlowTarget;
     END_IF;
@@ -276,111 +234,52 @@ IF SimTick.Q THEN
         Z02_FLOW := 0.0;
     END_IF;
 
-
-    (* ---------------------------------------------------------
-       9.4 TANK LEVEL RESPONSE
-       --------------------------------------------------------- *)
-
+    (* 9.4 Moisture process response *)
     IF Z02_COMMANDED AND (Z02_FLOW > 0.0) THEN
-
-        rLevelStep := ABS(Z02_SIM_FILL_RATE) * 0.1;
-        Z02_LEVEL := Z02_LEVEL + rLevelStep;
-
+        rMoistureStep := ABS(Z02_SIM_MOISTURE_RATE) * 0.1;
+        Z02_MOISTURE  := Z02_MOISTURE + rMoistureStep;
     ELSE
-
-        rLevelStep := ABS(Z02_SIM_DRAIN_RATE) * 0.1;
-        Z02_LEVEL := Z02_LEVEL - rLevelStep;
-
+        rMoistureStep := ABS(Z02_SIM_DRY_RATE) * 0.1;
+        Z02_MOISTURE  := Z02_MOISTURE - rMoistureStep;
     END_IF;
 
-    IF Z02_LEVEL > 100.0 THEN
-        Z02_LEVEL := 100.0;
-    END_IF;
+    IF Z02_MOISTURE > 100.0 THEN Z02_MOISTURE := 100.0; END_IF;
+    IF Z02_MOISTURE < 0.0   THEN Z02_MOISTURE := 0.0;   END_IF;
 
-    IF Z02_LEVEL < 0.0 THEN
-        Z02_LEVEL := 0.0;
-    END_IF;
-
-
-    (* ---------------------------------------------------------
-       9.5 FLOW STATUS AND LOW-FLOW DETECTION
-       --------------------------------------------------------- *)
-
-    Z02_FLOW_OK := TRUE;
-
-    IF Z02_COMMANDED
-       AND (Z02_FLOW < Z02_SIM_LOW_FLOW_LIMIT) THEN
+    (* 9.5 Flow quality and low-flow indication *)
+    Z02_FLOW_OK    := TRUE;
+    IF Z02_COMMANDED AND (Z02_FLOW < Z02_SIM_LOW_FLOW_LIMIT) THEN
         Z02_FLOW_OK := FALSE;
     END_IF;
 
-    Z02_LOW_FLOW := Z02_COMMANDED AND NOT Z02_FLOW_OK;
-
+    Z02_LOW_FLOW   := Z02_COMMANDED AND NOT Z02_FLOW_OK;
     Z02_PROCESS_OK := Z02_PERMISSIVE AND Z02_FLOW_OK;
 
-
-    (* ---------------------------------------------------------
-       9.6 PUMP RUNTIME
-       uiRuntimeTicks increments every 100 ms simulation tick.
-       Ten ticks represent approximately one second.
-       --------------------------------------------------------- *)
-
+    (* 9.6 Runtime accumulation *)
     IF Z02_RUNNING THEN
-
         uiRuntimeTicks := uiRuntimeTicks + 1;
-
         IF uiRuntimeTicks >= 10 THEN
             Z02_TOTAL_RUNTIME_SEC := Z02_TOTAL_RUNTIME_SEC + 1;
             uiRuntimeTicks := 0;
         END_IF;
-
-    END_IF;
-
-
-    (* ---------------------------------------------------------
-       9.7 MOISTURE TEST SIGNAL
-       Purpose: verify changing REAL data in Node-RED via CIP.
-
-       Range: 30.0 to 70.0 percent
-       Step:  0.1 percentage points per 100 ms tick
-       Cycle: approximately 80 seconds for a full up/down cycle
-
-       This is a test signal, not a physical sensor reading.
-       --------------------------------------------------------- *)
-
-    rMoistureStep := 0.1;
-
-    IF xMoistureRising THEN
-
-        Z02_MOISTURE := Z02_MOISTURE + rMoistureStep;
-
-        IF Z02_MOISTURE >= 70.0 THEN
-            Z02_MOISTURE := 70.0;
-            xMoistureRising := FALSE;
-        END_IF;
-
-    ELSE
-
-        Z02_MOISTURE := Z02_MOISTURE - rMoistureStep;
-
-        IF Z02_MOISTURE <= 30.0 THEN
-            Z02_MOISTURE := 30.0;
-            xMoistureRising := TRUE;
-        END_IF;
-
     END_IF;
 
 END_IF;
 
 
-(* =============================================================
-   10. OUTPUT MAPPING
-   ============================================================= *)
 
+(* 10. OUTPUT AND STATUS MAPPING *)
 Z02_RUN_FEEDBACK := Z02_RUNNING;
-Z02_MANUAL := NOT Z02_AUTO;
+Z02_MANUAL       := NOT Z02_AUTO;
+Z02_PF_RUNNING   := Z02_PUMP_RUN;
+Z02_PF_FAULTED   := FALSE;
 
-Z02_PF_RUNNING := Z02_PUMP_RUN;
-Z02_PF_FAULTED := FALSE;
+
+(* 11. MOMENTARY COMMAND CONSUMPTION *)
+IF Z02_START THEN Z02_START := FALSE; END_IF;
+IF Z02_STOP THEN Z02_STOP := FALSE; END_IF;
+IF Z02_FAULT_RESET THEN Z02_FAULT_RESET := FALSE; END_IF;
+
 
 ```
 
