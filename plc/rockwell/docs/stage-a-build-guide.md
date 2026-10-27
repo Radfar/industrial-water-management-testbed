@@ -65,21 +65,21 @@ No.	Variable	Suggested / known type	Purpose
 38	Z02_MANUAL	            BOOL	Manual mode status
 39	Z02_PF_RUNNING         	BOOL	PowerFlex running feedback
 40	Z02_PF_FAULTED	         BOOL	PowerFlex fault status
+41	rFlowTarget	REAL	Effective flow target after restriction logic
+42	rFlowError	REAL	Difference between target flow and current flow
+43	rFlowStep	REAL	Flow change per simulation update
 
 global timer instance
 SimTick	                  TON	Periodic simulation timer
 
 Local variables
 
-1	rtStart	               R_TRIG	Detects the rising edge of the start command
-2	rtStop	R_TRIG	Detects the rising edge of the stop command
-3	rtFaultReset	R_TRIG	Detects the rising edge of the fault reset command
-4	xAutoDemand	BOOL	Stores the AUTO moisture demand state
-5	rFlowTarget	REAL	Effective flow target after restriction logic
-6	rFlowError	REAL	Difference between target flow and current flow
-7	rFlowStep	REAL	Flow change per simulation update
-8	rMoistureStep	REAL	Moisture change per simulation update
-9	uiRuntimeTicks	UINT	Counts simulation ticks toward one runtime second
+1   rMoistureStep	REAL	Moisture change per simulation update
+2   rtStart	R_TRIG	Detects the rising edge of the start command
+3   rtStop	R_TRIG	Detects the rising edge of the stop command
+4   rtFaultReset	R_TRIG	Detects the rising edge of the fault reset command
+5	 xAutoDemand	BOOL	Stores the AUTO moisture demand state
+6	uiRuntimeTicks	UINT	Counts simulation ticks toward one runtime second
 
 ```
 
