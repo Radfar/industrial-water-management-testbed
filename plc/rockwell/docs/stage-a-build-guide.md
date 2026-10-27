@@ -78,172 +78,310 @@ PowerFlex_Faulted    : BOOL;   (* feedback — stays FALSE until real drive conn
 ## 4. Structured Text program
 
 ```iecst
-(* ---- Fault latch / reset ---- *)
-IF (Fault_LowLevelToRun OR Fault_FillTimeout OR PowerFlex_Faulted) THEN
-    Fault_Active := TRUE;
+(* =============================================================
+   MICRO850 ZONE 02 - WATER MANAGEMENT SIMULATION
+   Controller: Micro850 / CCW
+   Language: Structured Text (ST)
+
+   Includes:
+   - Start/stop edge detection
+   - Fault generation and reset
+   - Permissive and automatic/manual control
+   - Pump and valve command simulation
+   - Flow and tank-level simulation
+   - Low-flow detection
+   - Runtime accumulation
+   - Moisture test signal for Node-RED CIP Read
+   ============================================================= *)
+
+
+(* =============================================================
+   1. COMMAND EDGE DETECTION
+   ============================================================= *)
+
+rtStart(CLK := Z02_START);
+rtStop(CLK := Z02_STOP);
+rtFaultReset(CLK := Z02_FAULT_RESET);
+
+
+(* =============================================================
+   2. STATUS MIRRORS
+   ============================================================= *)
+
+Z02_SIM_ACTIVE := Z02_SIM_ENABLE;
+
+(* Simulation placeholder only.
+   Replace with real communications diagnostics when integrated. *)
+Z02_COMM_OK := TRUE;
+
+
+(* =============================================================
+   3. FAULT GENERATION / RESET
+   ============================================================= *)
+
+IF Z02_SIM_ACTUATOR_FAULT OR Z02_SIM_SENSOR_FAULT THEN
+    Z02_FAULT := TRUE;
 END_IF;
 
-IF ResetCmd AND NOT (Fault_LowLevelToRun OR Fault_FillTimeout OR PowerFlex_Faulted) THEN
-    Fault_Active        := FALSE;
-    Fault_LowLevelToRun := FALSE;
-    Fault_FillTimeout   := FALSE;
-    FaultCode            := 0;
+IF rtFaultReset.Q THEN
+    IF NOT Z02_SIM_ACTUATOR_FAULT
+       AND NOT Z02_SIM_SENSOR_FAULT THEN
+        Z02_FAULT := FALSE;
+    END_IF;
 END_IF;
 
-IF StopCmd THEN
-    SystemState := 0;
+
+(* =============================================================
+   4. PERMISSIVE
+   ============================================================= *)
+
+Z02_PERMISSIVE :=
+    NOT Z02_FAULT
+    AND NOT Z02_SIM_ACTUATOR_FAULT
+    AND NOT Z02_SIM_SENSOR_FAULT
+    AND Z02_COMM_OK
+    AND Z02_SIM_ENABLE;
+
+
+(* =============================================================
+   5. AUTO DEMAND - LEVEL HYSTERESIS
+   ============================================================= *)
+
+IF Z02_LEVEL <= Z02_LEVEL_LOW_SP THEN
+    xAutoDemand := TRUE;
+ELSIF Z02_LEVEL >= Z02_LEVEL_HIGH_SP THEN
+    xAutoDemand := FALSE;
 END_IF;
 
-IF Fault_Active THEN
-    SystemState := 90;
+
+(* =============================================================
+   6. RUNNING DECISION
+   ============================================================= *)
+
+Z02_AUTO_ACTIVE := FALSE;
+
+IF Z02_AUTO AND Z02_PERMISSIVE THEN
+
+    Z02_AUTO_ACTIVE := TRUE;
+    Z02_RUNNING := xAutoDemand;
+
+ELSIF Z02_PERMISSIVE THEN
+
+    IF rtStart.Q THEN
+        Z02_RUNNING := TRUE;
+    END_IF;
+
 END_IF;
 
-(* ---- State machine ---- *)
-CASE SystemState OF
+IF rtStop.Q THEN
+    Z02_RUNNING := FALSE;
+    xAutoDemand := FALSE;
+END_IF;
 
-0: (* IDLE *)
-    PumpRun         := FALSE;
-    PumpSpeedRefPct := 0.0;
-    Valve1_Open     := FALSE;
-    Valve2_Open     := FALSE;
-    Valve3_Open     := FALSE;
-    DrainValve_Open := FALSE;
-    FillTimer.IN    := FALSE;
 
-    IF StartCmd AND AutoMode AND NOT Fault_Active THEN
-        SystemState := 10;
-    END_IF;
+(* =============================================================
+   7. FAULT / COMMUNICATION / ENABLE SAFETY
+   ============================================================= *)
 
-10: (* FILL *)
-    DrainValve_Open := FALSE;
-    Valve1_Open := FALSE; Valve2_Open := FALSE; Valve3_Open := FALSE;
+IF Z02_FAULT THEN
+    Z02_RUNNING := FALSE;
+END_IF;
 
-    IF LevelSensorPct < LevelSetpoint_FillPct THEN
-        PumpRun         := TRUE;
-        PumpSpeedRefPct := FillPumpSpeedPct;
-    ELSE
-        PumpRun         := FALSE;
-        PumpSpeedRefPct := 0.0;
-    END_IF;
+IF NOT Z02_COMM_OK THEN
+    Z02_RUNNING := FALSE;
+END_IF;
 
-    FillTimer(IN := (LevelSensorPct < LevelSetpoint_FillPct), PT := T#5m);
-    IF FillTimer.Q THEN
-        Fault_FillTimeout := TRUE;
-    END_IF;
+IF NOT Z02_SIM_ENABLE THEN
+    Z02_RUNNING := FALSE;
+END_IF;
 
-    IF LevelSensorPct >= LevelSetpoint_FillPct THEN
-        FillTimer.IN := FALSE;
-        SystemState  := 20;
-    END_IF;
 
-20: (* IRRIGATE ZONE 1 *)
-    IF LevelSensorPct < LevelSetpoint_MinPct THEN
-        Fault_LowLevelToRun := TRUE;
-    ELSE
-        Valve1_Open     := TRUE;
-        Valve2_Open     := FALSE;
-        Valve3_Open     := FALSE;
-        PumpRun         := TRUE;
-        PumpSpeedRefPct := IrrigatePumpSpeedPct;
-    END_IF;
+(* =============================================================
+   8. PUMP AND DRIVE COMMANDS
+   ============================================================= *)
 
-    Zone1Timer(IN := TRUE, PT := T#30s);
-    IF Zone1Timer.Q THEN
-        Zone1Timer.IN := FALSE;
-        Valve1_Open   := FALSE;
-        SystemState   := 21;
-    END_IF;
+Z02_COMMANDED := Z02_RUNNING AND Z02_PERMISSIVE;
 
-21: (* IRRIGATE ZONE 2 *)
-    IF LevelSensorPct < LevelSetpoint_MinPct THEN
-        Fault_LowLevelToRun := TRUE;
-    ELSE
-        Valve1_Open     := FALSE;
-        Valve2_Open     := TRUE;
-        Valve3_Open     := FALSE;
-        PumpRun         := TRUE;
-        PumpSpeedRefPct := IrrigatePumpSpeedPct;
-    END_IF;
+Z02_PUMP_RUN := Z02_COMMANDED;
 
-    Zone2Timer(IN := TRUE, PT := T#30s);
-    IF Zone2Timer.Q THEN
-        Zone2Timer.IN := FALSE;
-        Valve2_Open   := FALSE;
-        SystemState   := 22;
-    END_IF;
-
-22: (* IRRIGATE ZONE 3 *)
-    IF LevelSensorPct < LevelSetpoint_MinPct THEN
-        Fault_LowLevelToRun := TRUE;
-    ELSE
-        Valve1_Open     := FALSE;
-        Valve2_Open     := FALSE;
-        Valve3_Open     := TRUE;
-        PumpRun         := TRUE;
-        PumpSpeedRefPct := IrrigatePumpSpeedPct;
-    END_IF;
-
-    Zone3Timer(IN := TRUE, PT := T#30s);
-    IF Zone3Timer.Q THEN
-        Zone3Timer.IN := FALSE;
-        Valve3_Open   := FALSE;
-        SystemState   := 30;
-    END_IF;
-
-30: (* DRAIN *)
-    PumpRun         := FALSE;
-    PumpSpeedRefPct := 0.0;
-    Valve1_Open := FALSE; Valve2_Open := FALSE; Valve3_Open := FALSE;
-    DrainValve_Open := TRUE;
-
-    DrainTimer(IN := TRUE, PT := T#20s);
-    IF DrainTimer.Q THEN
-        DrainTimer.IN   := FALSE;
-        DrainValve_Open := FALSE;
-        SystemState     := 0;
-    END_IF;
-
-90: (* FAULT *)
-    PumpRun         := FALSE;
-    PumpSpeedRefPct := 0.0;
-    Valve1_Open := FALSE; Valve2_Open := FALSE; Valve3_Open := FALSE;
-    DrainValve_Open := FALSE;
-
-    IF NOT Fault_Active THEN
-        SystemState := 0;
-    END_IF;
-
+IF Z02_COMMANDED THEN
+    Z02_PUMP_SPD := Z02_IRR_SPD_SP;
 ELSE
-    SystemState := 90;   (* unknown state -> fail safe *)
-
-END_CASE;
-
-(* ---- PowerFlex interface mapping ----
-   Replace with the CCAT sample's actual predefined tags once you paste
-   that project in; the control logic above never needs to change. *)
-PowerFlex_Start    := PumpRun;
-PowerFlex_Stop     := NOT PumpRun;
-PowerFlex_SpeedRef := PumpSpeedRefPct;
-
-
-(* =========================================================================
-   VIRTUAL PROCESS MODEL — simulator only.
-   The free Micro800 Simulator has no analog I/O, so this block stands in
-   for real tank/flow physics: it drives LevelSensorPct up while the pump
-   runs and down while a valve is open, so the state machine above can be
-   exercised end-to-end without forcing values by hand every scan.
-   Delete or bypass this block once real sensors are wired in Stage C.
-   ========================================================================= *)
-IF PumpRun THEN
-    LevelSensorPct := LevelSensorPct + (PumpSpeedRefPct * 0.01);
-ELSIF Valve1_Open OR Valve2_Open OR Valve3_Open OR DrainValve_Open THEN
-    LevelSensorPct := LevelSensorPct - 0.15;
+    Z02_PUMP_SPD := 0.0;
 END_IF;
 
-IF LevelSensorPct > 100.0 THEN LevelSensorPct := 100.0; END_IF;
-IF LevelSensorPct < 0.0   THEN LevelSensorPct := 0.0;   END_IF;
+Z02_PF_START := Z02_PUMP_RUN;
+Z02_PF_STOP := NOT Z02_PUMP_RUN;
+Z02_PF_SPDREF := Z02_PUMP_SPD;
 
-FlowSensor_Lpm := PumpSpeedRefPct * 0.5;
+
+(* =============================================================
+   9. 100 ms SIMULATION TICK
+   ============================================================= *)
+
+
+SimTick(IN := NOT SimTick.Q, PT := T#100MS);
+IF SimTick.Q THEN
+
+    (* ---------------------------------------------------------
+       9.1 VALVE POSITION
+       Assumes Z02_VALVE is REAL, expressed as a percentage.
+       --------------------------------------------------------- *)
+
+    IF Z02_COMMANDED THEN
+        Z02_VALVE := 100.0;
+    ELSE
+        Z02_VALVE := 0.0;
+    END_IF;
+
+
+    (* ---------------------------------------------------------
+       9.2 FLOW TARGET
+       --------------------------------------------------------- *)
+
+    IF Z02_COMMANDED THEN
+        rFlowTarget := Z02_SIM_FLOW_TARGET;
+    ELSE
+        rFlowTarget := 0.0;
+    END_IF;
+
+
+    (* ---------------------------------------------------------
+       9.3 FLOW RESPONSE
+       --------------------------------------------------------- *)
+
+    rFlowError := rFlowTarget - Z02_FLOW;
+
+    rFlowStep := ABS(Z02_SIM_FLOW_RATE) * 0.1;
+
+    IF rFlowStep < 0.1 THEN
+        rFlowStep := 0.1;
+    END_IF;
+
+    IF rFlowError > rFlowStep THEN
+        Z02_FLOW := Z02_FLOW + rFlowStep;
+
+    ELSIF rFlowError < -rFlowStep THEN
+        Z02_FLOW := Z02_FLOW - rFlowStep;
+
+    ELSE
+        Z02_FLOW := rFlowTarget;
+    END_IF;
+
+    IF Z02_FLOW < 0.0 THEN
+        Z02_FLOW := 0.0;
+    END_IF;
+
+    IF Z02_SIM_SENSOR_FAULT THEN
+        Z02_FLOW := 0.0;
+    END_IF;
+
+
+    (* ---------------------------------------------------------
+       9.4 TANK LEVEL RESPONSE
+       --------------------------------------------------------- *)
+
+    IF Z02_COMMANDED AND (Z02_FLOW > 0.0) THEN
+
+        rLevelStep := ABS(Z02_SIM_FILL_RATE) * 0.1;
+        Z02_LEVEL := Z02_LEVEL + rLevelStep;
+
+    ELSE
+
+        rLevelStep := ABS(Z02_SIM_DRAIN_RATE) * 0.1;
+        Z02_LEVEL := Z02_LEVEL - rLevelStep;
+
+    END_IF;
+
+    IF Z02_LEVEL > 100.0 THEN
+        Z02_LEVEL := 100.0;
+    END_IF;
+
+    IF Z02_LEVEL < 0.0 THEN
+        Z02_LEVEL := 0.0;
+    END_IF;
+
+
+    (* ---------------------------------------------------------
+       9.5 FLOW STATUS AND LOW-FLOW DETECTION
+       --------------------------------------------------------- *)
+
+    Z02_FLOW_OK := TRUE;
+
+    IF Z02_COMMANDED
+       AND (Z02_FLOW < Z02_SIM_LOW_FLOW_LIMIT) THEN
+        Z02_FLOW_OK := FALSE;
+    END_IF;
+
+    Z02_LOW_FLOW := Z02_COMMANDED AND NOT Z02_FLOW_OK;
+
+    Z02_PROCESS_OK := Z02_PERMISSIVE AND Z02_FLOW_OK;
+
+
+    (* ---------------------------------------------------------
+       9.6 PUMP RUNTIME
+       uiRuntimeTicks increments every 100 ms simulation tick.
+       Ten ticks represent approximately one second.
+       --------------------------------------------------------- *)
+
+    IF Z02_RUNNING THEN
+
+        uiRuntimeTicks := uiRuntimeTicks + 1;
+
+        IF uiRuntimeTicks >= 10 THEN
+            Z02_TOTAL_RUNTIME_SEC := Z02_TOTAL_RUNTIME_SEC + 1;
+            uiRuntimeTicks := 0;
+        END_IF;
+
+    END_IF;
+
+
+    (* ---------------------------------------------------------
+       9.7 MOISTURE TEST SIGNAL
+       Purpose: verify changing REAL data in Node-RED via CIP.
+
+       Range: 30.0 to 70.0 percent
+       Step:  0.1 percentage points per 100 ms tick
+       Cycle: approximately 80 seconds for a full up/down cycle
+
+       This is a test signal, not a physical sensor reading.
+       --------------------------------------------------------- *)
+
+    rMoistureStep := 0.1;
+
+    IF xMoistureRising THEN
+
+        Z02_MOISTURE := Z02_MOISTURE + rMoistureStep;
+
+        IF Z02_MOISTURE >= 70.0 THEN
+            Z02_MOISTURE := 70.0;
+            xMoistureRising := FALSE;
+        END_IF;
+
+    ELSE
+
+        Z02_MOISTURE := Z02_MOISTURE - rMoistureStep;
+
+        IF Z02_MOISTURE <= 30.0 THEN
+            Z02_MOISTURE := 30.0;
+            xMoistureRising := TRUE;
+        END_IF;
+
+    END_IF;
+
+END_IF;
+
+
+(* =============================================================
+   10. OUTPUT MAPPING
+   ============================================================= *)
+
+Z02_RUN_FEEDBACK := Z02_RUNNING;
+Z02_MANUAL := NOT Z02_AUTO;
+
+Z02_PF_RUNNING := Z02_PUMP_RUN;
+Z02_PF_FAULTED := FALSE;
+
 ```
 
 ## 5. Test it in the simulator
