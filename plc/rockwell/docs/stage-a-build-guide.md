@@ -1,5 +1,5 @@
 # Stage A - Rockwell Leg: Micro850 Simulator, Web SCADA Zone 02
-
+project: SIM_Zone2
 ## 1. Controller decision
 
 **Micro850**, catalog family 2080-LC50 (48-point combo, e.g. `2080-LC50-48QWB-SIM`, matches the free CCW Simulator's I/O count). Not Micro870.
